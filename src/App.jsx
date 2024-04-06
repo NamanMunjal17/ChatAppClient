@@ -39,21 +39,7 @@ function stringAvatar(name) {
   };
 }
 
-function ContactName(props) {
-  return (
-    <>
-      <div
-        className="contact"
-        id={props.name}
-        onClick={function (event) {
-          REC = event.target.id;
-        }}
-      >
-        <Avatar {...stringAvatar(props.name)} /> {props.name}
-      </div>
-    </>
-  );
-}
+
 
 function TextBlob(props) {
   return (
@@ -67,10 +53,7 @@ function TextBlob(props) {
   );
 }
 
-function sendMsg(msg, from, to) {
-  console.log(msg, from, to);
-  socket.emit("message", JSON.stringify({ msg: msg, from: from, to: to }));
-}
+
 
 function App() {
   const [msg, setMsg] = useState("");
@@ -79,21 +62,62 @@ function App() {
   const [user, setUser] = useState([]);
   const [profile, setProfile] = useState([]);
   const [contactList, setContactList] = useState([]);
+  const [msgs,setMsgs]=useState([]);
+  let appendedMsgs=[];
+  function sendMsg(msg, from, to) {
+    console.log("MSGS",msgs);
+    console.log(msg, from, to);
+    socket.emit("message", JSON.stringify({ msg: msg, from: from, to: to }));
+    setMsgs((msgs) => [...msgs,<TextBlob name={from} text={msg}/>]);
+  }
   const login = useGoogleLogin({
     onSuccess: (codeResponse) => setUser(codeResponse),
     onError: (error) => console.log("Login Failed:", error),
   });
+
+  function ContactName(props) {
+    return (
+      <>
+        <div
+          className="contact"
+          id={props.name}
+          onClick={function (event) {
+            let r=event.target.id;
+            console.log(r,profile["email"].split("@")[0])
+            socket.emit("retrieveMessages",JSON.stringify({from:r ,to: profile["email"].split("@")[0] }))
+            setCurrentRecvr(r)
+          }}
+        >
+          <Avatar {...stringAvatar(props.name)} /> {props.name}
+        </div>
+      </>
+    );
+  }
+
   useEffect(() => {
+    let openChat;
+    openChat=currentRecvr;
     socket.on("contactListSent", async (contacts) => {
       setContactList(contacts["contacts"]);
     });
     socket.on("message",async(message)=>{
-      console.log(message)
+      message=JSON.parse(message)
+      console.log(openChat,message,message["from"])
+      if(openChat==message["from"] && !(message in appendedMsgs)){console.log("hey");setMsgs((msgs) => [...msgs,<TextBlob name={message["from"]} text={message["msg"]}/>]);appendedMsgs.push(message)}
     })
-  }, [socket]);
-  useEffect(() => {
-    setCurrentRecvr(REC);
-  }, [msg]);
+  }, [socket,currentRecvr]);
+
+  useEffect(()=>{
+    socket.on("receiveMsgs",async (data) => {
+      let m=[];
+      for(let i=0;i<data.length;i++){
+        m.push(<TextBlob name={data[i].from} text={data[i].text}/>)
+      }
+      console.log(m)
+      setMsgs(m);
+    })
+  },[socket]);
+
   useEffect(() => {
     if (user) {
       axios
@@ -153,7 +177,9 @@ function App() {
         <div className="CurrentChat">
           <ContactName name={currentRecvr} />
         </div>
-        <div className="texts"></div>
+        <div className="texts">
+          {msgs}
+        </div>
         <TextField
           value={msg}
           onChange={(e) => setMsg(e.target.value)}
@@ -164,6 +190,7 @@ function App() {
           onKeyDown={(event) => {
             if (event.key === "Enter") {
               sendMsg(msg, profile["email"].split("@")[0], currentRecvr);
+              console.log("msg sent",currentRecvr)
               setMsg("");
             }
           }}
